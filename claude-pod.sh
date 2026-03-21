@@ -292,6 +292,9 @@ cmd_open() {
         if [[ -n "$workspace" ]]; then
             echo "Moving to workspace $workspace..."
             move_window_to_space "$window_id" "$workspace"
+            sleep 0.3
+            # Re-query: yabai may assign a new window ID after moving
+            window_id="$(newest_ghostty_window)"
         fi
     fi
 
