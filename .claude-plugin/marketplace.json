@@ -1,0 +1,22 @@
+{
+  "name": "claude-pods",
+  "owner": {
+    "name": "Ryan Breen",
+    "email": "ryan@ryanbreen.com"
+  },
+  "metadata": {
+    "description": "Managed Ghostty terminal layouts for Claude Code development environments",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "claude-pods",
+      "description": "Managed Ghostty terminal layouts with Claude Code, lazygit, and utility panes",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skill"
+      ]
+    }
+  ]
+}
