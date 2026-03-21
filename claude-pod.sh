@@ -55,6 +55,24 @@ Commands:
 EOF
 }
 
+# Set the current tab's title via Cmd+I
+# Usage: set_tab_title "My Title"
+set_tab_title() {
+    local title="$1"
+    osascript -e "
+        tell application \"System Events\"
+            tell process \"Ghostty\"
+                keystroke \"i\" using {command down}
+                delay 1.0
+                keystroke \"$title\"
+                delay 0.3
+                key code 36
+            end tell
+        end tell
+    "
+    sleep 0.3
+}
+
 # Type text into the focused Ghostty pane and press Return
 type_and_enter() {
     local text="$1"
@@ -256,6 +274,12 @@ cmd_open() {
 
     # Launch programs in each pane
     launch_programs "$dir" "${sessions[@]}"
+
+    # Set the tab title to the directory basename
+    local tab_title
+    tab_title="$(basename "$dir")"
+    echo "Setting tab title: $tab_title"
+    set_tab_title "$tab_title"
 
     # Get the window ID of our new pod
     local window_id
