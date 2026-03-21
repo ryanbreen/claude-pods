@@ -283,12 +283,16 @@ cmd_open() {
 
     # Get the window ID of our new pod
     local window_id
-    window_id="$(newest_ghostty_window)"
-
-    # Move to target workspace if specified (standalone mode only)
-    if [[ -n "$workspace" ]] && ! $tab; then
-        echo "Moving to workspace $workspace..."
-        move_window_to_space "$window_id" "$workspace"
+    if $tab; then
+        # Tab-mode pods share the parent window ID
+        window_id="$target_window"
+    else
+        window_id="$(newest_ghostty_window)"
+        # Move to target workspace if specified (standalone mode only)
+        if [[ -n "$workspace" ]]; then
+            echo "Moving to workspace $workspace..."
+            move_window_to_space "$window_id" "$workspace"
+        fi
     fi
 
     # Register the pod
