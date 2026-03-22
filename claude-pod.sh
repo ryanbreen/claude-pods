@@ -33,6 +33,7 @@ Commands:
     --workspace <N>        Target workspace number (1-9)
     --tab                  Add as tab to existing Ghostty window on target workspace
     --window-id <id>       Target a specific Ghostty window (for --tab with multiple windows)
+    --main-cmd <command>   Command to run in the middle pane (default: none, left as zsh)
     --tab-position <N>     Position for the new tab (e.g., 3 for third tab)
     --delay <seconds>      Keystroke delay (default: 0.4)
 
@@ -116,19 +117,15 @@ goto_pane() {
 
 # Launch programs in all panes after layout is built
 # Assumes cursor is in the bottom-left pane after layout construction
+# Usage: launch_programs <dir> <main_cmd> <session1> <session2> ...
 launch_programs() {
     local dir="$1"
-    shift
+    local main_cmd="$2"
+    shift 2
     local sessions=("$@")
 
     echo "Launching programs in panes..."
 
-    # After layout.sh, focus ends up in the last split pane (bottom of left column)
-    # Pane map after construction + equalize:
-    #   Left col (top to bottom): C1, C2, C3, C4
-    #   Middle: M
-    #   Right col: R_top, R_bottom
-    #
     # Current position: C4 (bottom-left, where the last split happened)
 
     # C4 — launch claude (4th session or fresh)
@@ -169,8 +166,12 @@ launch_programs() {
 
     # Navigate to Middle (left one from right column)
     goto_pane left
-    echo "  Middle: (zsh prompt)"
-    # Leave as-is — this is the main workspace pane
+    if [[ -n "$main_cmd" ]]; then
+        echo "  Middle: $main_cmd"
+        type_and_enter "$main_cmd"
+    else
+        echo "  Middle: (zsh prompt)"
+    fi
 
     echo "All programs launched."
 }
@@ -178,7 +179,7 @@ launch_programs() {
 # ─── Commands ─────────────────────────────────────────────────────────────────
 
 cmd_open() {
-    local dir="" workspace="" tab=false tab_position="" delay="0.4" window_id_override=""
+    local dir="" workspace="" tab=false tab_position="" delay="0.4" window_id_override="" main_cmd=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -188,6 +189,7 @@ cmd_open() {
             --tab-position) tab_position="$2"; shift 2 ;;
             --delay) delay="$2"; shift 2 ;;
             --window-id) window_id_override="$2"; shift 2 ;;
+            --main-cmd) main_cmd="$2"; shift 2 ;;
             *) echo "Unknown option: $1" >&2; return 1 ;;
         esac
     done
@@ -279,7 +281,7 @@ cmd_open() {
     bash "$LAYOUT_SCRIPT" "$delay"
 
     # Launch programs in each pane
-    launch_programs "$dir" "${sessions[@]}"
+    launch_programs "$dir" "$main_cmd" "${sessions[@]}"
 
     # Set the tab title to the directory basename
     local tab_title
@@ -301,13 +303,16 @@ cmd_open() {
     local actual_workspace="${workspace:-$(current_space)}"
     local mode
     mode="$(if $tab; then echo "tab"; else echo "standalone"; fi)"
-    register_pod "$pod_id" "$dir" "$actual_workspace" "$mode" "${sessions[@]}"
+    register_pod "$pod_id" "$dir" "$actual_workspace" "$mode" "$main_cmd" "${sessions[@]}"
 
     echo ""
     echo "Pod $pod_id created successfully!"
     echo "  Directory: $dir"
     echo "  Workspace: $actual_workspace"
     echo "  Mode: $mode"
+    if [[ -n "$main_cmd" ]]; then
+        echo "  Main pane: $main_cmd"
+    fi
     echo "  Sessions: ${sessions[*]:-none}"
 }
 
@@ -443,16 +448,21 @@ for p in reversed(state['pods']):
         return 1
     fi
 
-    local target_dir target_workspace target_id
+    local target_dir target_workspace target_id target_main_cmd
     target_dir="$(echo "$pod_json" | python3 -c "import json,sys; print(json.load(sys.stdin)['directory'])")"
     target_workspace="$(echo "$pod_json" | python3 -c "import json,sys; print(json.load(sys.stdin)['workspace'])")"
     target_id="$(echo "$pod_json" | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")"
+    target_main_cmd="$(echo "$pod_json" | python3 -c "import json,sys; v=json.load(sys.stdin).get('mainCmd') or ''; print(v)")"
 
     # Remove the old pod entry, open will create a new one
     remove_pod "$target_id"
 
-    # Reopen with the same directory and workspace
-    cmd_open --dir "$target_dir" --workspace "$target_workspace"
+    # Reopen with the same directory, workspace, and main command
+    local reopen_args=(--dir "$target_dir" --workspace "$target_workspace")
+    if [[ -n "$target_main_cmd" ]]; then
+        reopen_args+=(--main-cmd "$target_main_cmd")
+    fi
+    cmd_open "${reopen_args[@]}"
 }
 
 cmd_reopen_all() {
@@ -475,11 +485,16 @@ cmd_reopen_all() {
 import json, sys
 pods = json.load(sys.stdin)
 for p in pods:
-    print(f\"{p['id']}|{p['directory']}|{p['workspace']}\")
-" | while IFS='|' read -r pod_id pod_dir pod_ws; do
+    main_cmd = p.get('mainCmd') or ''
+    print(f\"{p['id']}|{p['directory']}|{p['workspace']}|{main_cmd}\")
+" | while IFS='|' read -r pod_id pod_dir pod_ws pod_main_cmd; do
         echo "--- Reopening pod $pod_id ($pod_dir on workspace $pod_ws) ---"
         remove_pod "$pod_id"
-        cmd_open --dir "$pod_dir" --workspace "$pod_ws"
+        local reopen_args=(--dir "$pod_dir" --workspace "$pod_ws")
+        if [[ -n "$pod_main_cmd" ]]; then
+            reopen_args+=(--main-cmd "$pod_main_cmd")
+        fi
+        cmd_open "${reopen_args[@]}"
         echo ""
     done
 }
