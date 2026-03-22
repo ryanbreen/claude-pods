@@ -7,10 +7,11 @@
 set -euo pipefail
 
 # Convert a directory path to Claude's project directory encoding
-# /Users/wrb/fun/code/breenix → -Users-wrb-fun-code-breenix
+# Claude converts both / and _ to - in project directory names
+# /Users/wrb/fun/code/claude_pulse → -Users-wrb-fun-code-claude-pulse
 encode_project_path() {
     local dir="$1"
-    echo "$dir" | sed 's|/|-|g'
+    echo "$dir" | sed 's|[/_]|-|g'
 }
 
 # Find the N most recent Claude session IDs for a directory
