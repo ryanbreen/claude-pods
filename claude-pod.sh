@@ -159,12 +159,9 @@ launch_programs() {
     echo "  R_top: lazygit"
     type_and_enter "lazygit"
 
-    # Navigate to R_bottom (down one)
-    goto_pane down
-    echo "  R_bottom: (zsh prompt)"
-    # Leave as-is
-
-    # Navigate to Middle (left one from right column)
+    # Navigate to Middle (left from R_top — top of right col reliably hits
+    # the full-height middle pane; going left from R_bottom would hit a
+    # left-column pane instead due to spatial navigation)
     goto_pane left
     if [[ -n "$main_cmd" ]]; then
         echo "  Middle: $main_cmd"
@@ -172,6 +169,8 @@ launch_programs() {
     else
         echo "  Middle: (zsh prompt)"
     fi
+
+    # R_bottom is left as a zsh prompt — no need to visit it
 
     echo "All programs launched."
 }
