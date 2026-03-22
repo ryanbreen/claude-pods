@@ -32,6 +32,7 @@ Commands:
     --dir <path>           Working directory (required)
     --workspace <N>        Target workspace number (1-9)
     --tab                  Add as tab to existing Ghostty window on target workspace
+    --window-id <id>       Target a specific Ghostty window (for --tab with multiple windows)
     --tab-position <N>     Position for the new tab (e.g., 3 for third tab)
     --delay <seconds>      Keystroke delay (default: 0.4)
 
@@ -177,7 +178,7 @@ launch_programs() {
 # ─── Commands ─────────────────────────────────────────────────────────────────
 
 cmd_open() {
-    local dir="" workspace="" tab=false tab_position="" delay="0.4"
+    local dir="" workspace="" tab=false tab_position="" delay="0.4" window_id_override=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -186,6 +187,7 @@ cmd_open() {
             --tab) tab=true; shift ;;
             --tab-position) tab_position="$2"; shift 2 ;;
             --delay) delay="$2"; shift 2 ;;
+            --window-id) window_id_override="$2"; shift 2 ;;
             *) echo "Unknown option: $1" >&2; return 1 ;;
         esac
     done
@@ -221,9 +223,13 @@ cmd_open() {
             workspace="$(current_space)"
         fi
 
-        # Find the Ghostty window on the target workspace
+        # Find the Ghostty window — use explicit ID if provided, otherwise resolve by workspace
         local target_window
-        target_window="$(resolve_ghostty_window_on_space "$workspace")" || return 1
+        if [[ -n "$window_id_override" ]]; then
+            target_window="$window_id_override"
+        else
+            target_window="$(resolve_ghostty_window_on_space "$workspace")" || return 1
+        fi
 
         # Focus that workspace and window (skip space focus if already there)
         local cur_space
@@ -311,6 +317,7 @@ cmd_open() {
     echo "  Directory: $dir"
     echo "  Workspace: $actual_workspace"
     echo "  Mode: $mode"
+    echo "  Window ID: ${window_id:-unknown}"
     echo "  Sessions: ${sessions[*]:-none}"
 }
 
