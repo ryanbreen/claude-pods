@@ -46,16 +46,17 @@ register_pod() {
     local sessions_json
     sessions_json="$(printf '%s\n' "${sessions[@]}" | python3 -c "import json,sys; print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))")"
 
-    python3 -c "
-import json, datetime
+    POD_MAIN_CMD="$main_cmd" python3 -c "
+import json, datetime, os
 with open('$STATE_FILE') as f:
     state = json.load(f)
+main_cmd = os.environ.get('POD_MAIN_CMD', '')
 pod = {
     'id': '$pod_id',
     'directory': '$directory',
     'workspace': $workspace,
     'mode': '$mode',
-    'mainCmd': '''$main_cmd''' if '''$main_cmd''' else None,
+    'mainCmd': main_cmd if main_cmd else None,
     'createdAt': datetime.datetime.now(datetime.timezone.utc).isoformat(),
     'claudeSessions': $sessions_json,
     'active': True
