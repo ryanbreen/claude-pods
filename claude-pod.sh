@@ -287,21 +287,12 @@ cmd_open() {
     echo "Setting tab title: $tab_title"
     set_tab_title "$tab_title"
 
-    # Get the window ID of our new pod
-    local window_id
-    if $tab; then
-        # Tab-mode pods share the parent window ID
-        window_id="$target_window"
-    else
+    # Move to target workspace if specified (standalone mode only)
+    if ! $tab && [[ -n "$workspace" ]]; then
+        local window_id
         window_id="$(newest_ghostty_window)"
-        # Move to target workspace if specified (standalone mode only)
-        if [[ -n "$workspace" ]]; then
-            echo "Moving to workspace $workspace..."
-            move_window_to_space "$window_id" "$workspace"
-            sleep 0.5
-            # Re-query by workspace: yabai assigns new IDs after moving
-            window_id="$(resolve_ghostty_window_on_space "$workspace" 2>/dev/null || echo "$window_id")"
-        fi
+        echo "Moving to workspace $workspace..."
+        move_window_to_space "$window_id" "$workspace"
     fi
 
     # Register the pod
@@ -310,14 +301,13 @@ cmd_open() {
     local actual_workspace="${workspace:-$(current_space)}"
     local mode
     mode="$(if $tab; then echo "tab"; else echo "standalone"; fi)"
-    register_pod "$pod_id" "$dir" "$actual_workspace" "$mode" "${window_id:-0}" "${sessions[@]}"
+    register_pod "$pod_id" "$dir" "$actual_workspace" "$mode" "${sessions[@]}"
 
     echo ""
     echo "Pod $pod_id created successfully!"
     echo "  Directory: $dir"
     echo "  Workspace: $actual_workspace"
     echo "  Mode: $mode"
-    echo "  Window ID: ${window_id:-unknown}"
     echo "  Sessions: ${sessions[*]:-none}"
 }
 
@@ -373,7 +363,6 @@ elif len(pods) > 1:
 
     deactivate_pod "$target_id"
     echo "Pod $target_id closed (marked inactive)."
-    echo "Note: The Ghostty window itself is not force-closed — close it manually or it will be pruned on next status check."
 }
 
 cmd_list() {
@@ -387,8 +376,6 @@ cmd_list() {
         esac
     done
 
-    prune_dead_pods >/dev/null 2>&1 || true
-
     local pods
     pods="$(list_pods "$filter")"
 
@@ -400,13 +387,13 @@ if not pods:
 else:
     for p in pods:
         status = 'active' if p.get('active', True) else 'inactive'
-        print(f\"  [{status}] {p['id']}  ws:{p['workspace']}  {p['directory']}  ({p['mode']})\")
+        basename = p['directory'].split('/')[-1]
+        print(f\"  [{status}] {p['id']}  ws:{p['workspace']}  {basename}  ({p['mode']})\")
 "
 }
 
 cmd_status() {
     echo "=== Claude Pod Status ==="
-    prune_dead_pods
     echo ""
     echo "Active pods:"
     cmd_list --active

@@ -2,7 +2,8 @@
 # state.sh — Pod state management (read/write state.json)
 #
 # Manages the persistent state file at ~/.claude-pods/state.json
-# Tracks which pods are open, their directories, workspaces, and sessions.
+# The state file is a declaration of what pods should exist.
+# Only `pod open` and `pod close` change active status.
 
 set -euo pipefail
 
@@ -31,14 +32,13 @@ write_state() {
 }
 
 # Register a new pod
-# Usage: register_pod <id> <directory> <workspace> <mode> <window_id> <session1> <session2> <session3> <session4>
+# Usage: register_pod <id> <directory> <workspace> <mode> <session1> <session2> ...
 register_pod() {
     local pod_id="$1"
     local directory="$2"
     local workspace="$3"
     local mode="$4"
-    local window_id="$5"
-    shift 5
+    shift 4
     local sessions=("$@")
 
     init_state
@@ -54,7 +54,6 @@ pod = {
     'directory': '$directory',
     'workspace': $workspace,
     'mode': '$mode',
-    'ghosttyWindowId': $window_id,
     'createdAt': datetime.datetime.now(datetime.timezone.utc).isoformat(),
     'claudeSessions': $sessions_json,
     'active': True
@@ -150,32 +149,4 @@ inactive_pods() {
 # Generate a short pod ID
 generate_pod_id() {
     python3 -c "import uuid; print(str(uuid.uuid4())[:8])"
-}
-
-# Prune pods whose Ghostty windows no longer exist
-prune_dead_pods() {
-    init_state
-    python3 -c "
-import json, subprocess
-with open('$STATE_FILE') as f:
-    state = json.load(f)
-
-# Get all current Ghostty window IDs
-result = subprocess.run(['yabai', '-m', 'query', '--windows'], capture_output=True, text=True)
-windows = json.loads(result.stdout)
-ghostty_ids = {w['id'] for w in windows if w.get('app') == 'Ghostty'}
-
-changed = False
-for pod in state['pods']:
-    if pod.get('active', True) and pod.get('ghosttyWindowId') not in ghostty_ids:
-        pod['active'] = False
-        changed = True
-
-if changed:
-    with open('$STATE_FILE', 'w') as f:
-        json.dump(state, f, indent=2)
-    print('Pruned dead pods')
-else:
-    print('All active pods are alive')
-"
 }
