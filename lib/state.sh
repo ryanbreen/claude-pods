@@ -32,14 +32,15 @@ write_state() {
 }
 
 # Register a new pod
-# Usage: register_pod <id> <directory> <workspace> <mode> <main_cmd> <session1> <session2> ...
+# Usage: register_pod <id> <directory> <workspace> <mode> <main_cmd> <claude_count> <session1> <session2> ...
 register_pod() {
     local pod_id="$1"
     local directory="$2"
     local workspace="$3"
     local mode="$4"
     local main_cmd="$5"
-    shift 5
+    local claude_count="$6"
+    shift 6
     local sessions=("$@")
 
     init_state
@@ -57,6 +58,7 @@ pod = {
     'workspace': $workspace,
     'mode': '$mode',
     'mainCmd': main_cmd if main_cmd else None,
+    'claudeCount': $claude_count,
     'createdAt': datetime.datetime.now(datetime.timezone.utc).isoformat(),
     'claudeSessions': $sessions_json,
     'active': True

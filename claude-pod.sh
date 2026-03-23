@@ -34,6 +34,7 @@ Commands:
     --tab                  Add as tab to existing Ghostty window on target workspace
     --window-id <id>       Target a specific Ghostty window (for --tab with multiple windows)
     --main-cmd <command>   Command to run in the middle pane (default: none, left as zsh)
+    --claude-count <N>     Number of Claude panes in the left column (default: 4)
     --tab-position <N>     Position for the new tab (e.g., 3 for third tab)
     --delay <seconds>      Keystroke delay (default: 0.4)
 
@@ -117,51 +118,45 @@ goto_pane() {
 
 # Launch programs in all panes after layout is built
 # Assumes cursor is in the bottom-left pane after layout construction
-# Usage: launch_programs <dir> <main_cmd> <session1> <session2> ...
+# Usage: launch_programs <dir> <main_cmd> <claude_count> <session1> <session2> ...
 launch_programs() {
     local dir="$1"
     local main_cmd="$2"
-    shift 2
+    local claude_count="$3"
+    shift 3
     local sessions=("$@")
 
     echo "Launching programs in panes..."
 
-    # Current position: C4 (bottom-left, where the last split happened)
+    # Current position: bottom of left column (where the last split happened)
+    # Launch Claude panes bottom-to-top, assigning sessions so most recent is at top
 
-    # C4 — launch claude (4th session or fresh)
     local cmd
-    cmd="$(claude_command "${sessions[3]:-}")"
-    echo "  C4 (bottom-left): $cmd"
-    type_and_enter "$cmd"
+    for ((i=claude_count-1; i>=0; i--)); do
+        cmd="$(claude_command "${sessions[$i]:-}")"
+        if [[ $i -eq $((claude_count-1)) ]]; then
+            echo "  C$((i+1)) (bottom-left): $cmd"
+        elif [[ $i -eq 0 ]]; then
+            echo "  C1 (top-left): $cmd"
+        else
+            echo "  C$((i+1)): $cmd"
+        fi
+        type_and_enter "$cmd"
+        # Navigate up to the next pane (except after the last one)
+        if [[ $i -gt 0 ]]; then
+            goto_pane up
+        fi
+    done
 
-    # Navigate to C3 (up one)
-    goto_pane up
-    cmd="$(claude_command "${sessions[2]:-}")"
-    echo "  C3: $cmd"
-    type_and_enter "$cmd"
-
-    # Navigate to C2 (up one)
-    goto_pane up
-    cmd="$(claude_command "${sessions[1]:-}")"
-    echo "  C2: $cmd"
-    type_and_enter "$cmd"
-
-    # Navigate to C1 (up one)
-    goto_pane up
-    cmd="$(claude_command "${sessions[0]:-}")"
-    echo "  C1 (top-left): $cmd"
-    type_and_enter "$cmd"
-
-    # Navigate to R_top (right twice, should land in top-right area)
+    # From C1 (top-left), navigate to R_top: right twice, then up to be safe
     goto_pane right 2
-    # Make sure we're at the top
     goto_pane up
     echo "  R_top: lazygit"
     type_and_enter "lazygit"
 
     # Navigate to Middle (left from R_top — top of right col reliably hits
-    # the full-height middle pane; going left from R_bottom would hit a
-    # left-column pane instead due to spatial navigation)
+    # the full-height middle pane; going left from lower panes would hit
+    # a left-column pane instead due to spatial navigation)
     goto_pane left
     if [[ -n "$main_cmd" ]]; then
         echo "  Middle: $main_cmd"
@@ -178,7 +173,7 @@ launch_programs() {
 # ─── Commands ─────────────────────────────────────────────────────────────────
 
 cmd_open() {
-    local dir="" workspace="" tab=false tab_position="" delay="0.4" window_id_override="" main_cmd=""
+    local dir="" workspace="" tab=false tab_position="" delay="0.4" window_id_override="" main_cmd="" claude_count="4"
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -187,6 +182,7 @@ cmd_open() {
             --tab) tab=true; shift ;;
             --tab-position) tab_position="$2"; shift 2 ;;
             --delay) delay="$2"; shift 2 ;;
+            --claude-count) claude_count="$2"; shift 2 ;;
             --window-id) window_id_override="$2"; shift 2 ;;
             --main-cmd) main_cmd="$2"; shift 2 ;;
             *) echo "Unknown option: $1" >&2; return 1 ;;
@@ -205,12 +201,13 @@ cmd_open() {
     local sessions=()
     while IFS= read -r sid; do
         [[ -n "$sid" ]] && sessions+=("$sid")
-    done < <(find_recent_sessions "$dir" 4)
+    done < <(find_recent_sessions "$dir" "$claude_count")
 
     echo "=== Opening Claude Pod ==="
     echo "Directory: $dir"
     echo "Workspace: ${workspace:-current}"
     echo "Mode: $(if $tab; then echo "tab"; else echo "standalone window"; fi)"
+    echo "Claude panes: $claude_count"
     echo "Sessions found: ${#sessions[@]}"
     echo ""
 
@@ -277,10 +274,10 @@ cmd_open() {
     fi
 
     # Build the split layout
-    bash "$LAYOUT_SCRIPT" "$delay"
+    bash "$LAYOUT_SCRIPT" "$delay" "$claude_count"
 
     # Launch programs in each pane
-    launch_programs "$dir" "$main_cmd" "${sessions[@]}"
+    launch_programs "$dir" "$main_cmd" "$claude_count" "${sessions[@]}"
 
     # Set the tab title to the directory basename
     local tab_title
@@ -302,7 +299,7 @@ cmd_open() {
     local actual_workspace="${workspace:-$(current_space)}"
     local mode
     mode="$(if $tab; then echo "tab"; else echo "standalone"; fi)"
-    register_pod "$pod_id" "$dir" "$actual_workspace" "$mode" "$main_cmd" "${sessions[@]}"
+    register_pod "$pod_id" "$dir" "$actual_workspace" "$mode" "$main_cmd" "$claude_count" "${sessions[@]}"
 
     echo ""
     echo "Pod $pod_id created successfully!"
@@ -447,17 +444,18 @@ for p in reversed(state['pods']):
         return 1
     fi
 
-    local target_dir target_workspace target_id target_main_cmd
+    local target_dir target_workspace target_id target_main_cmd target_claude_count
     target_dir="$(echo "$pod_json" | python3 -c "import json,sys; print(json.load(sys.stdin)['directory'])")"
     target_workspace="$(echo "$pod_json" | python3 -c "import json,sys; print(json.load(sys.stdin)['workspace'])")"
     target_id="$(echo "$pod_json" | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")"
     target_main_cmd="$(echo "$pod_json" | python3 -c "import json,sys; v=json.load(sys.stdin).get('mainCmd') or ''; print(v)")"
+    target_claude_count="$(echo "$pod_json" | python3 -c "import json,sys; print(json.load(sys.stdin).get('claudeCount', 4))")"
 
     # Remove the old pod entry, open will create a new one
     remove_pod "$target_id"
 
-    # Reopen with the same directory, workspace, and main command
-    local reopen_args=(--dir "$target_dir" --workspace "$target_workspace")
+    # Reopen with the same directory, workspace, main command, and claude count
+    local reopen_args=(--dir "$target_dir" --workspace "$target_workspace" --claude-count "$target_claude_count")
     if [[ -n "$target_main_cmd" ]]; then
         reopen_args+=(--main-cmd "$target_main_cmd")
     fi
@@ -485,11 +483,12 @@ import json, sys
 pods = json.load(sys.stdin)
 for p in pods:
     main_cmd = p.get('mainCmd') or ''
-    print(f\"{p['id']}|{p['directory']}|{p['workspace']}|{main_cmd}\")
-" | while IFS='|' read -r pod_id pod_dir pod_ws pod_main_cmd; do
+    claude_count = p.get('claudeCount', 4)
+    print(f\"{p['id']}|{p['directory']}|{p['workspace']}|{main_cmd}|{claude_count}\")
+" | while IFS='|' read -r pod_id pod_dir pod_ws pod_main_cmd pod_claude_count; do
         echo "--- Reopening pod $pod_id ($pod_dir on workspace $pod_ws) ---"
         remove_pod "$pod_id"
-        local reopen_args=(--dir "$pod_dir" --workspace "$pod_ws")
+        local reopen_args=(--dir "$pod_dir" --workspace "$pod_ws" --claude-count "${pod_claude_count:-4}")
         if [[ -n "$pod_main_cmd" ]]; then
             reopen_args+=(--main-cmd "$pod_main_cmd")
         fi
