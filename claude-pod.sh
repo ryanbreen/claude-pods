@@ -104,7 +104,7 @@ goto_pane() {
         down)  keycode=125 ;;
         up)    keycode=126 ;;
     esac
-    for ((i=0; i<times; i++)); do
+    for ((_nav=0; _nav<times; _nav++)); do
         osascript -e "
             tell application \"System Events\"
                 tell process \"Ghostty\"
