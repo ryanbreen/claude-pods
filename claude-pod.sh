@@ -173,7 +173,7 @@ launch_programs() {
 # ─── Commands ─────────────────────────────────────────────────────────────────
 
 cmd_open() {
-    local dir="" workspace="" tab=false tab_position="" delay="0.4" window_id_override="" main_cmd="" claude_count="4"
+    local dir="" workspace="" tab=false tab_position="" delay="0.4" window_id_override="" main_cmd="" claude_count="4" no_countdown=false
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -185,6 +185,7 @@ cmd_open() {
             --claude-count) claude_count="$2"; shift 2 ;;
             --window-id) window_id_override="$2"; shift 2 ;;
             --main-cmd) main_cmd="$2"; shift 2 ;;
+            --no-countdown) no_countdown=true; shift ;;
             *) echo "Unknown option: $1" >&2; return 1 ;;
         esac
     done
@@ -211,9 +212,11 @@ cmd_open() {
     echo "Sessions found: ${#sessions[@]}"
     echo ""
 
-    # Step 1: Countdown
-    echo "Starting countdown — hands off the keyboard!"
-    "$COUNTDOWN_BIN" 3
+    # Step 1: Countdown (skip with --no-countdown for automated/batch reopens)
+    if [[ "$no_countdown" != "true" ]]; then
+        echo "Starting countdown — hands off the keyboard!"
+        "$COUNTDOWN_BIN" 3
+    fi
 
     if $tab; then
         # ── Tab mode ──
@@ -444,18 +447,22 @@ for p in reversed(state['pods']):
         return 1
     fi
 
-    local target_dir target_workspace target_id target_main_cmd target_claude_count
+    local target_dir target_workspace target_id target_main_cmd target_claude_count target_mode
     target_dir="$(echo "$pod_json" | python3 -c "import json,sys; print(json.load(sys.stdin)['directory'])")"
     target_workspace="$(echo "$pod_json" | python3 -c "import json,sys; print(json.load(sys.stdin)['workspace'])")"
     target_id="$(echo "$pod_json" | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")"
     target_main_cmd="$(echo "$pod_json" | python3 -c "import json,sys; v=json.load(sys.stdin).get('mainCmd') or ''; print(v)")"
     target_claude_count="$(echo "$pod_json" | python3 -c "import json,sys; print(json.load(sys.stdin).get('claudeCount', 4))")"
+    target_mode="$(echo "$pod_json" | python3 -c "import json,sys; print(json.load(sys.stdin).get('mode', 'standalone'))")"
 
     # Remove the old pod entry, open will create a new one
     remove_pod "$target_id"
 
-    # Reopen with the same directory, workspace, main command, and claude count
+    # Reopen with the same directory, workspace, main command, claude count, and mode
     local reopen_args=(--dir "$target_dir" --workspace "$target_workspace" --claude-count "$target_claude_count")
+    if [[ "$target_mode" == "tab" ]]; then
+        reopen_args+=(--tab)
+    fi
     if [[ -n "$target_main_cmd" ]]; then
         reopen_args+=(--main-cmd "$target_main_cmd")
     fi
